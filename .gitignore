@@ -1,0 +1,6 @@
+__pycache__/*
+data/cmn-eng.zip
+data/dict*
+data/sent_*
+model/*
+runs/*
