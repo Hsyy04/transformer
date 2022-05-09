@@ -173,5 +173,5 @@ class Transformer(nn.Module):
         src_mask = self.make_src_mask(src)
         tar_mask = self.make_tar_mask(tar)
         enc = self.encoder(src, src_mask)
-        out = self.decoder(tar, enc, src_mask, tar_mask) # [N, seq_len, tar_vocab_size]
+        out = self.decoder(tar, enc, src_mask, tar_mask)   # [N, seq_len, tar_vocab_size]
         return out

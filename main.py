@@ -1,3 +1,4 @@
+from tokenize import String
 from torch import int32, int64, kl_div
 from sklearn.utils import shuffle
 from torch.optim.optimizer import Optimizer
@@ -9,6 +10,7 @@ from torch.autograd import Variable
 import torch
 from datetime import datetime
 from tqdm import tqdm
+import jieba
 import os
 from torch.utils.tensorboard import SummaryWriter
 
@@ -20,6 +22,9 @@ print(f'Using {device} device')
 class SentPairSet(Dataset):
     def __init__(self, src_len, tar_len) -> None:
         super().__init__()
+        self.src_len = src_len
+        self.tar_len = tar_len
+
         with open('data/dict_en.txt','r', encoding='UTF-8') as f:
             words_src_all=f.read().split('\n')
         self.src_word2id = dict([(w,i) for i,w in enumerate(words_src_all)])
@@ -33,25 +38,8 @@ class SentPairSet(Dataset):
         with open("data/sent_pairs.txt", 'r', encoding='UTF-8') as f:
             data_raw = f.read().split('\n')
         self.data_sent_pair = []
-        for sent in data_raw[-500:]:
-            sent_src = sent.split(' ')[0].split(' ')
-            sent_src_id = []
-            for wd in sent_src:
-                if wd in self.src_word2id:
-                    sent_src_id.append(self.src_word2id[wd])
-                else: 
-                    sent_src_id.append(self.src_word2id['<unk>'])
-            while(len(sent_src_id)<src_len): sent_src_id.append(0)
-        
-            sent_tar = sent.split(' ')[0].split(' ')
-            sent_tar_id = []
-            for wd in sent_tar:
-                if wd in self.tar_word2id:
-                    sent_tar_id.append(self.tar_word2id[wd])
-                else: 
-                    sent_tar_id.append(self.tar_word2id['<unk>'])
-            while(len(sent_tar_id)<src_len): sent_tar_id.append(0)
-
+        for sent in data_raw[:1000]:
+            sent_src_id, sent_tar_id = self.get_id(sent.split('\t')[0], sent.split('\t')[1])
             self.data_sent_pair.append([sent_src_id[:src_len], sent_tar_id[:tar_len]])
         
     def __getitem__(self, index):
@@ -64,6 +52,31 @@ class SentPairSet(Dataset):
         return len(self.src_word2id)
     def get_tar_vocab_size(self):
         return len(self.tar_word2id)
+    def get_id(self, st_src, st_tar):
+        # source sentence
+        sent_src = st_src.split(' ')
+        sent_src_id = []
+        for wd in sent_src:
+            if wd in self.src_word2id:
+                sent_src_id.append(self.src_word2id[wd])
+            else: 
+                sent_src_id.append(self.src_word2id['<unk>'])
+        # target sentence
+        sent_tar_id = []
+        sent_tar_id.append(self.tar_word2id['<start>'])
+        if len(st_tar)!=0:
+            sent_tar = jieba.lcut(st_tar)
+            for wd in sent_tar:
+                if wd in self.tar_word2id:
+                    sent_tar_id.append(self.tar_word2id[wd])
+                else: 
+                    sent_tar_id.append(self.tar_word2id['<unk>'])
+            sent_tar_id.append(self.tar_word2id['<eos>'])
+            # add padding
+            while(len(sent_src_id)<self.src_len): sent_src_id.append(0)
+            while(len(sent_tar_id)<self.tar_len): sent_tar_id.append(0)
+
+        return sent_src_id, sent_tar_id
 
 class LabelSmoothing(nn.Module):
     # FIXME
@@ -111,7 +124,7 @@ def forward_and_loss(model, data_batch, mode, optimizer:Optimizer=None, smooth_l
     return tot_loss
 if __name__ == "__main__":
     LEARNING_RATE = 0.00003
-    EPOCH_NUM = 40
+    EPOCH_NUM = 60
     BATCH_SIZE= 1
     HEAD_NUM = 4
     LAYER_NUM = 2
@@ -154,12 +167,13 @@ if __name__ == "__main__":
 
         print(f"loss:{totloss}")
         writer.add_scalars('train/loss', {'loss':totloss}, epoch)
-        if epoch % 4 == 0:
-            test_loss = forward_and_loss(model, test_dataloader, 'test')
-            dic = {'test':test_loss}
-            writer.add_scalars('result/loss', dic, epoch)
-            torch.save(model, f"model/{NAME}.pth") 
-            print("saving...")
-        print('\n')
+        # if epoch % 10 == 0:
+        #     test_loss = forward_and_loss(model, test_dataloader, 'test')
+        #     print(f"test_loss:{test_loss}")
+        #     dic = {'test':test_loss}
+        #     writer.add_scalars('result/loss', dic, epoch)
+        #     torch.save(model, f"model/{NAME}.pth") 
+        #     print("saving...")
     # TODO: bleu score
-    pass
+    torch.save(model, f"model/{NAME}.pth") 
+    print('\n')
